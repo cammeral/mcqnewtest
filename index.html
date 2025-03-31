@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام الاختبارات الآمن</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #dc3545;
+            text-align: center;
+        }
+        .question {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        .timer {
+            font-size: 24px;
+            text-align: center;
+            color: #dc3545;
+            margin: 20px 0;
+        }
+        #warning {
+            color: red;
+            font-weight: bold;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>اختبار الرياضيات - الفصل الأول</h1>
+        <div class="timer">الوقت المتبقي: <span id="time">20:00</span></div>
+        <div id="warning">تحذير: تم اكتشاف محاولة غش!</div>
+        
+        <form id="quizForm">
+            <div class="question">
+                <p>1. ما هو ناتج 15 + 27؟</p>
+                <input type="radio" name="q1" value="42"> 42<br>
+                <input type="radio" name="q1" value="32"> 32<br>
+                <input type="radio" name="q1" value="52"> 52<br>
+            </div>
+            
+            <div class="question">
+                <p>2. ما هو العدد الأولي بين الأعداد التالية؟</p>
+                <input type="radio" name="q2" value="15"> 15<br>
+                <input type="radio" name="q2" value="17"> 17<br>
+                <input type="radio" name="q2" value="21"> 21<br>
+            </div>
+            
+            <div class="question">
+                <p>3. اكتب ناتج 8 × 7:</p>
+                <input type="text" name="q3" style="width: 100%; padding: 8px;">
+            </div>
+            
+            <button type="submit" style="background: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer;">إرسال الإجابات</button>
+        </form>
+    </div>
+
+    <!-- مكتبة html2canvas لالتقاط الشاشة -->
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    
+    <script>
+        // بيانات الطالب
+        const studentId = new URLSearchParams(window.location.search).get('id');
+        let violations = 0;
+        let screenshots = [];
+        
+        // منع النسخ والنقر الأيمن
+        document.addEventListener('copy', (e) => {
+            e.preventDefault();
+            logViolation('محاولة نسخ النص');
+        });
+        
+        document.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            logViolation('محاولة فتح القائمة اليمنى');
+        });
+        
+        // تتبع تغيير النافذة
+        let isTabActive = true;
+        
+        window.addEventListener('blur', () => {
+            isTabActive = false;
+            logViolation('مغادرة نافذة الاختبار');
+        });
+        
+        window.addEventListener('focus', () => {
+            isTabActive = true;
+        });
+        
+        // المؤقت
+        let timeLeft = 20 * 60; // 20 دقيقة بالثواني
+        const timer = setInterval(updateTimer, 1000);
+        
+        function updateTimer() {
+            timeLeft--;
+            const minutes = Math.floor(timeLeft / 60);
+            const seconds = timeLeft % 60;
+            document.getElementById('time').textContent = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+            
+            if (timeLeft <= 0) {
+                clearInterval(timer);
+                submitQuiz();
+            }
+        }
+        
+        // التقاط الشاشة كل 5 ثواني
+        setInterval(captureScreen, 5000);
+        
+        function captureScreen() {
+            html2canvas(document.body).then(canvas => {
+                const screenshot = canvas.toDataURL('image/png');
+                screenshots.push(screenshot);
+                
+                // في تطبيق حقيقي، نرسل الصور للخادم هنا
+                console.log('تم التقاط صورة للشاشة');
+            });
+        }
+        
+        function logViolation(type) {
+            violations++;
+            document.getElementById('warning').style.display = 'block';
+            
+            // تسجيل المخالفة مع لقطة الشاشة
+            html2canvas(document.body).then(canvas => {
+                const violationData = {
+                    type: type,
+                    timestamp: new Date().toISOString(),
+                    screenshot: canvas.toDataURL('image/png')
+                };
+                
+                // في تطبيق حقيقي، نرسل البيانات للخادم
+                console.log('مخالفة:', violationData);
+            });
+        }
+        
+        function submitQuiz() {
+            const formData = new FormData(document.getElementById('quizForm'));
+            const answers = {};
+            
+            for (let [key, value] of formData.entries()) {
+                answers[key] = value;
+            }
+            
+            const result = {
+                studentId: studentId,
+                answers: answers,
+                violations: violations,
+                screenshots: screenshots
+            };
+            
+            // في تطبيق حقيقي، نرسل النتائج للخادم
+            console.log('نتيجة الاختبار:', result);
+            alert('تم إرسال إجاباتك بنجاح!');
+            
+            // إرسال البيانات إلى بوت التليجرام
+            sendToTelegram(result);
+        }
+        
+        function sendToTelegram(data) {
+            // هنا نضع كود إرسال البيانات إلى بوت التليجرام
+            // هذا مثال باستخدام fetch
+            fetch('https://your-telegram-bot-server.com/submit', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('تم الإرسال إلى التليجرام:', data);
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+            });
+        }
+        
+        // إرسال البيانات عند مغادرة الصفحة
+        window.addEventListener('beforeunload', (e) => {
+            if (timeLeft > 0) {
+                submitQuiz();
+            }
+        });
+    </script>
+</body>
+</html>
